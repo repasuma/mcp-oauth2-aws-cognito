@@ -1,0 +1,17 @@
+flowchart LR
+ subgraph subGraph0["User Session"]
+        A["Client"]
+  end
+ subgraph subGraph1["MCP Infrastructure"]
+        B["MCP Server - Resource Server"]
+  end
+ subgraph subGraph2["AWS Infrastructure"]
+        C["AWS Cognito - Authorization Server"]
+  end
+    A -- "1 - No Token Request" --> B
+    B -- "2- 401 Unauthorized + PRM URL" --> A
+    A -- "3- Discover Authorization Server" --> C
+    A -- "4- OAuth Authorization Flow (PKCE)" --> C
+    C -- "5- Access Token" --> A
+    A -- "6- Request with Bearer Token" --> B
+    B -- "7- Return Protected Resource" --> A

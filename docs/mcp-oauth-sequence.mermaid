@@ -1,0 +1,22 @@
+sequenceDiagram
+    participant Client
+    participant MCP_Server as MCP Server (Resource Server)
+    participant AWS_Cognito as AWS Cognito (Authorization Server)
+
+    Client->>MCP_Server: Request without token
+    MCP_Server-->>Client: 401 Unauthorized + WWW-Authenticate (resource_metadata URL)
+
+    Client->>MCP_Server: GET /.well-known/oauth-protected-resource
+    MCP_Server-->>Client: Resource Metadata with Authorization Server URL
+
+    Client->>AWS_Cognito: GET /.well-known/oauth-authorization-server
+    AWS_Cognito-->>Client: Authorization Server Metadata
+
+    Client->>AWS_Cognito: Start OAuth 2.1 Authorization Code Flow (PKCE)
+    AWS_Cognito-->>Client: Authorization Code (via redirect)
+
+    Client->>AWS_Cognito: Exchange Authorization Code + Code Verifier for Access Token
+    AWS_Cognito-->>Client: Access Token
+
+    Client->>MCP_Server: Request with Bearer Token
+    MCP_Server-->>Client: Protected Resource Response
