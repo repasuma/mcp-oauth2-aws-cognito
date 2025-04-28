@@ -9,9 +9,6 @@ sequenceDiagram
     Client->>MCP_Server: GET /.well-known/oauth-protected-resource
     MCP_Server-->>Client: Resource Metadata with Authorization Server URL
 
-    Client->>AWS_Cognito: GET /.well-known/oauth-authorization-server
-    AWS_Cognito-->>Client: Authorization Server Metadata
-
     Client->>AWS_Cognito: Start OAuth 2.1 Authorization Code Flow (PKCE)
     AWS_Cognito-->>Client: Authorization Code (via redirect)
 
