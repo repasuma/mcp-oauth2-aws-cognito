@@ -46,7 +46,6 @@ Key components of the specification:
 
 This implementation showcases how to apply these concepts with AWS Cognito, including implementing Dynamic Client Registration through custom API Gateway endpoints and Lambda functions.
 
-
 ## Architecture
 ```
 Client → MCP Server → AWS Cognito
@@ -88,13 +87,16 @@ The DCR flow works as follows:
 - Approval workflow for new clients
 - Limited scope access for dynamically registered clients
 
-For production environments, see our [DCR Security Recommendations](./docs/dcr-security-recommendations.md) to enhance the security of the registration process.
+See our [DCR Security Recommendations](./docs/dcr-security-recommendations.md) to enhance the security of the registration process.
 
 ## Quick Start
 
 ### Prerequisites
 - Node.js installed
-- AWS account with Cognito setup
+- AWS test account with access to:
+    - Cognito for Authorization Server (1 user pool, 2 app clients)
+    - API Gateway / Lambda / DynamoDB for DCR (2 resources, 2 functions, 1 table) 
+    - CloudFormation for deploy (1 stack)
 - Basic knowledge of OAuth 2.1 flows
 
 ### Setup
@@ -104,18 +106,19 @@ For production environments, see our [DCR Security Recommendations](./docs/dcr-s
    cd mcp-oauth2-aws-cognito
    ```
 
-2. Install dependencies for all
+2. Install dependencies for clients and server
    ```bash
    npm run install:all
    ```
 
 3. Deploy AWS resources
    ```bash
-   npm run deploy:cognito
+   npm run deploy
    ```
 
 4. Review generated `.env` files in:
    - `src/client/.env`
+   - `src/auto-client/.env`
    - `src/mcp-server/.env`
    - Compare with `.env.example` files
    - Manually verify/update CLIENT_SECRET if needed
@@ -136,7 +139,7 @@ For production environments, see our [DCR Security Recommendations](./docs/dcr-s
 
 4. Click the "Fetch MCP Data" button to make an authenticated request to the MCP server
 
-5. Visit http://localhost:3002 to test the DCR flow. Auto-discovery client with Dynamic Client Registration.
+5. Visit http://localhost:3002 to test the DCR flow, auto-discovery client with Dynamic Client Registration.
 
 ### Cleanup
 1. Cleanup AWS resources
@@ -161,6 +164,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - [Model Context Protocol Official Specification](https://modelcontextprotocol.io/specification/draft/basic/authorization)
 - [OAuth 2.1 Draft](https://datatracker.ietf.org/doc/html/draft-ietf-oauth-v2-1-12)
 - [OAuth 2.0 Protected Resource Metadata](https://datatracker.ietf.org/doc/rfc9728/)
+- [OAuth 2.0 Dynamic Client Registration Protocol](https://datatracker.ietf.org/doc/rfc7591/)
 - [AWS Cognito Developer Guide](https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-identity-pools.html)
 
 ## License
