@@ -40,6 +40,22 @@ Serves as the OAuth 2.1 Authorization Server:
 - Provides JWT tokens with proper claims
 - Supports authorization code flow with PKCE
 
+### 4. Auto-Discovery Client (Express.js)
+
+A variant of the MCP Client that adds:
+- Support for OAuth 2.1 Dynamic Client Registration
+- Complete auto-discovery flow without pre-configuration
+- Registration with DCR endpoint through API Gateway
+- OAuth flow using dynamically obtained credentials
+
+### 5. Dynamic Client Registration API (API Gateway + Lambda)
+
+Provides the backend for Dynamic Client Registration:
+- API Gateway endpoints for registering clients
+- Lambda functions to create Cognito app clients
+- DynamoDB table for storing registration information
+- Serverless architecture for scalable client registration
+
 ## Authentication Flow
 
 The complete OAuth 2.1 flow in this implementation works as follows:
@@ -73,6 +89,39 @@ The complete OAuth 2.1 flow in this implementation works as follows:
    - Client requests new access token from Cognito
    - Client updates stored tokens
 
+## Dynamic Client Registration Flow
+
+The Dynamic Client Registration (DCR) process works as follows:
+
+1. **Client Initialization**
+   - Auto-client starts without any pre-configured OAuth credentials
+   - Only the MCP server URL is known to the client
+
+2. **MCP Server Discovery**
+   - Client makes unauthenticated request to MCP server
+   - Server responds with 401 and WWW-Authenticate header
+   - Client discovers Protected Resource Metadata (PRM)
+
+3. **Authorization Server Discovery**
+   - Client extracts authorization server URL from PRM
+   - Client fetches OpenID Connect configuration from Cognito
+
+4. **Dynamic Registration**
+   - Client sends registration request to DCR endpoint
+   - Request includes redirect URIs and desired scopes
+   - Lambda function creates new Cognito app client
+   - DynamoDB stores the registration details
+
+5. **Credential Management**
+   - Registration response includes client_id and client_secret
+   - Client stores these credentials in memory/session
+   - Credentials are used for standard OAuth authorization flow
+
+6. **Standard OAuth Flow**
+   - Using the dynamically obtained credentials, the client
+     proceeds with the standard OAuth 2.1 authorization flow
+
+
 ## AWS Resource Configuration
 
 ### Cognito User Pool
@@ -84,6 +133,21 @@ The complete OAuth 2.1 flow in this implementation works as follows:
 - Implements OAuth 2.1 discovery mechanisms
 - Serves Protected Resource Metadata
 - Validates tokens using Cognito JWT verification
+
+### API Gateway
+- Provides REST API for Dynamic Client Registration
+- Routes registration requests to Lambda functions
+- Enables scalable client registration capability
+
+### Lambda Functions
+- Handle client registration requests
+- Create Cognito app clients programmatically
+- Store registration information in DynamoDB
+
+### DynamoDB
+- Stores client registration details
+- Provides persistence for DCR relationships
+- Enables lookup of client information
 
 ## Security Considerations
 
@@ -109,7 +173,15 @@ This implementation follows OAuth 2.1 and MCP security best practices:
 5. **Proper Authorization**
    - Bearer token usage according to RFC6750
    - WWW-Authenticate headers following RFC9728
-   
+
+6. **Dynamic Client Registration Security**
+   - This implementation uses anonymous DCR for simplicity
+   - Production systems should implement additional security:
+     * Initial access tokens for registration authorization
+     * Client authentication (mTLS) for secure registration
+     * Registration policies and approval workflows
+     * Rate limiting to prevent abuse   
+
 ## Diagrams
 - [Architecture Diagram](./mcp-oauth-architecture.mermaid)
 - [Sequence Diagram](./mcp-oauth-sequence.mermaid)

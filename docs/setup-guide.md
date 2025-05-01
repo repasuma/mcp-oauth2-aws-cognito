@@ -70,6 +70,11 @@ npm run dev
   - Minimal protected resource server
   - Serves /.well-known/oauth-protected-resource
 
+/auto-client
+  - Dynamic client registration example
+  - Auto-discovers and registers with authorization server
+  - Handles OAuth 2.1 flow with dynamically obtained credentials
+
 /client
   - Example client to demonstrate the OAuth 2.1 flow
   - Handles discovery, PKCE, and token usage
@@ -78,7 +83,10 @@ npm run dev
   - Setup guides and explanations
 
 /infrastructure
-  - Cloud formation templates
+  - CloudFormation templates for AWS resources
+  - API Gateway for Dynamic Client Registration
+  - Lambda functions for client registration management
+  - DynamoDB for storing client registrations
 ```
 
 ### 4. Test the OAuth Flow
@@ -90,6 +98,19 @@ Visit `http://localhost:3000` in your browser and follow these steps:
 3. Create an account or log in with existing credentials
 4. After successful authentication, you'll be redirected back to the client app
 5. Click "Fetch MCP Data" to make an authenticated request to the MCP server
+
+### 5. Auto-Discovery Client with DCR
+
+Visit `http://localhost:3002` in your browser and follow these steps:
+
+1. Click the "Log in" button
+2. The client will:
+   - Auto-discover the MCP server and authorization endpoints
+   - Register itself with the DCR endpoint
+   - Redirect you to Cognito for authentication
+3. After authentication, you'll be redirected back to the auto-client
+4. Click "Fetch MCP Data" to make an authenticated request with the dynamically registered client
+
 
 ## Architecture Overview
 - Detailed [Architecture Overview](./architecture-guide.md)
@@ -171,6 +192,11 @@ This will remove:
    - Check that your AWS CLI has sufficient permissions
    - Look at CloudFormation events for detailed error messages
 
+5. **Dynamic Client Registration issues**
+   - Check API Gateway logs for registration errors
+   - Verify Lambda functions have proper permissions to create Cognito clients
+   - Make sure DynamoDB table exists and is accessible
+   - If using the auto-client, check console logs for detailed discovery and registration errors
 
 ## Advanced Configuration
 
@@ -199,3 +225,24 @@ The MCP specification supports multiple authorization servers. To test this:
 1. Set up another OAuth provider (Auth0, Okta, etc.)
 2. Add it to the `authorization_servers` array in your Protected Resource Metadata
 3. Update your client to handle selection between multiple authorization servers
+
+### Dynamic Client Registration Security
+
+For production environments, enhance DCR security with:
+
+1. **Initial Access Tokens**
+   - Require pre-authorized tokens for client registration
+   - Use API Gateway authorizers to validate tokens
+
+2. **Client Authentication**
+   - Implement mutual TLS (mTLS) for API Gateway endpoints
+   - Require client certificates for registration requests
+
+3. **Registration Policies**
+   - Implement approval workflows for new clients
+   - Restrict allowed redirect URIs to trusted domains
+   - Limit scopes available to dynamically registered clients
+
+4. **Rate Limiting**
+   - Add API Gateway usage plans and API keys
+   - Implement CloudWatch alarms for unusual registration patterns

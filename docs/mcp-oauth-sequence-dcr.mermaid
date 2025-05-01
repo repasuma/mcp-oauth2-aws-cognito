@@ -1,0 +1,43 @@
+sequenceDiagram
+    participant Client
+    participant AutoClient as Auto-Discovery Client
+    participant MCP_Server as MCP Server (RS)
+    participant API_Gateway as API Gateway (DCR)
+    participant Lambda as Lambda Functions
+    participant DynamoDB as DynamoDB Registry
+    participant AWS_Cognito as AWS Cognito (AS)
+
+    %% Standard OAuth Flow
+    Client->>MCP_Server: Request without token
+    MCP_Server-->>Client: 401 Unauthorized + WWW-Authenticate
+    Client->>MCP_Server: GET /.well-known/oauth-protected-resource
+    MCP_Server-->>Client: Resource Metadata with AS URL
+    Client->>AWS_Cognito: Start OAuth 2.1 Flow (PKCE)
+    AWS_Cognito-->>Client: Authorization Code (via redirect)
+    Client->>AWS_Cognito: Exchange Code + Code Verifier for Token
+    AWS_Cognito-->>Client: Access Token
+    Client->>MCP_Server: Request with Bearer Token
+    MCP_Server-->>Client: Protected Resource Response
+
+    %% Dynamic Client Registration Flow
+    AutoClient->>MCP_Server: Request without token
+    MCP_Server-->>AutoClient: 401 Unauthorized + WWW-Authenticate
+    AutoClient->>MCP_Server: GET /.well-known/oauth-protected-resource
+    MCP_Server-->>AutoClient: Resource Metadata with AS URL
+    
+    %% DCR-specific steps
+    AutoClient->>API_Gateway: POST /register (redirect_uris, scopes, etc.)
+    API_Gateway->>Lambda: Invoke Registration Lambda
+    Lambda->>AWS_Cognito: CreateUserPoolClient
+    AWS_Cognito-->>Lambda: Client ID and Secret
+    Lambda->>DynamoDB: Store Registration Data
+    Lambda-->>API_Gateway: Registration Response
+    API_Gateway-->>AutoClient: Client Credentials
+    
+    %% Continue with OAuth flow using new credentials
+    AutoClient->>AWS_Cognito: Start OAuth 2.1 Flow with Dynamic Credentials
+    AWS_Cognito-->>AutoClient: Authorization Code (via redirect)
+    AutoClient->>AWS_Cognito: Exchange Code + Code Verifier for Token
+    AWS_Cognito-->>AutoClient: Access Token
+    AutoClient->>MCP_Server: Request with Bearer Token
+    MCP_Server-->>AutoClient: Protected Resource Response

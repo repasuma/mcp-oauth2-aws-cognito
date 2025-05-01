@@ -10,7 +10,10 @@ Based on the new MCP Authorization Specification published in April 2025, this p
 - OAuth 2.1 Authorization Code Flow with PKCE
 - Protected Resource Metadata (PRM) document discovery
 - Dynamic discovery of Authorization Server metadata
-
+- Dynamic Client Registration (DCR) support
+- Two client implementations:
+  - Static client with pre-configured credentials
+  - Auto-discovery client with dynamic registration
 
 ## Understanding the New MCP Authorization Spec
 
@@ -33,7 +36,16 @@ Key components of the specification:
    - Bearer token usage for authenticated requests
    - Token validation on the server side
 
-This implementation showcases how to apply these concepts with AWS Cognito.
+4. **Dynamic Client Registration (DCR)**
+   - Allows clients to automatically register with new MCP servers
+   - Eliminates the need for manual client registration processes
+   - Enables seamless discovery and connection to new services
+   - MCP specification strongly recommends implementing DCR since "clients do not know the set of MCP servers in advance"
+   - Provides a standardized way to obtain OAuth client credentials
+   - Follows RFC7591 (OAuth 2.0 Dynamic Client Registration Protocol)
+
+This implementation showcases how to apply these concepts with AWS Cognito, including implementing Dynamic Client Registration through custom API Gateway endpoints and Lambda functions.
+
 
 ## Architecture
 ```
@@ -47,9 +59,36 @@ Client → MCP Server → AWS Cognito
 5. Client obtains an access token and retries request to MCP server.
 6. MCP server validates token and grants access to the protected resource.
 
+For detailed overview, see the [Architecture Overview](./docs/architecture-guide.md).
+
 Diagrams:
 - [Architecture Diagram](./docs/mcp-oauth-architecture.mermaid)
 - [Sequence Diagram](./docs/mcp-oauth-sequence.mermaid)
+- [DCR Sequence Diagram](./docs/mcp-oauth-sequence-dcr.mermaid)
+
+## Dynamic Client Registration (DCR)
+
+This implementation includes support for OAuth 2.1 Dynamic Client Registration, allowing clients to:
+
+1. Dynamically discover the MCP server and authorization endpoints
+2. Register themselves with the authorization server
+3. Obtain credentials for the OAuth flow
+
+The DCR flow works as follows:
+
+1. Client discovers the MCP server's protected resource metadata
+2. Client discovers the authorization server (Cognito)
+3. Client registers with the DCR endpoint in API Gateway
+4. Registration creates a Cognito app client and returns credentials
+5. Client uses these credentials for the standard OAuth 2.1 flow
+
+**Security Note**: This implementation uses anonymous DCR without additional authentication. For production environments, consider adding:
+- Rate limiting on registration requests
+- Client authentication (mTLS, initial access tokens)
+- Approval workflow for new clients
+- Limited scope access for dynamically registered clients
+
+For production environments, see our [DCR Security Recommendations](./docs/dcr-security-recommendations.md) to enhance the security of the registration process.
 
 ## Quick Start
 
@@ -82,7 +121,7 @@ Diagrams:
    - Manually verify/update CLIENT_SECRET if needed
 
 ### Running the Application
-1. Start both the client and server
+1. Start both clients and server
    ```bash
    npm run dev
    ```
@@ -94,7 +133,10 @@ Diagrams:
    - Create a new user account
    - Verify your account by entering the confirmation code sent to your email
    - After successful verification, you'll be redirected back to the application
-   - Click the "Fetch MCP Data" button to make an authenticated request to the MCP server
+
+4. Click the "Fetch MCP Data" button to make an authenticated request to the MCP server
+
+5. Visit http://localhost:3002 to test the DCR flow. Auto-discovery client with Dynamic Client Registration.
 
 ### Cleanup
 1. Cleanup AWS resources
@@ -103,11 +145,6 @@ Diagrams:
    ```
 
 For detailed setup instructions, see the [Setup Guide](./docs/setup-guide.md).
-
-## Documentation
-
-- [Setup Guide](./docs/setup-guide.md)
-- [Architecture Overview](./docs/architecture-guide.md)
 
 ## Contributing
 
