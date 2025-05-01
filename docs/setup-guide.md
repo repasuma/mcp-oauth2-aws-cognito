@@ -17,6 +17,9 @@ This guide walks through setting up and running the MCP OAuth 2.1 demo with AWS 
    - Ensure you have permissions to create:
      * Cognito User Pools
      * IAM Roles
+     * API Gateway Resources
+     * Lambda Functions
+     * DynamoDB Table
 
 2. **Clone the Repository**
 
@@ -32,12 +35,13 @@ This guide walks through setting up and running the MCP OAuth 2.1 demo with AWS 
 
 4. **Deploy Cognito Resources**
    ```bash
-   npm run deploy:cognito
+   npm run deploy
    ```
 
 5. **Environment Configuration**
    - Review generated `.env` files in:
      * `src/client/.env`
+     * `src/auto-client/.env`
      * `src/mcp-server/.env`
    - Compare with `.env.example` files
    - Manually verify/update CLIENT_SECRET if needed
@@ -154,6 +158,7 @@ mcp-oauth2-aws-cognito/
 ├── scripts/                   # Deployment scripts
 ├── src/
 │   ├── mcp-server/            # MCP server implementation
+│   ├── auto-client/           # MCP auto discovery client implementation
 │   ├── client/                # MCP client implementation
 │   └── shared/                # Shared utilities
 └── docs/                      # Documentation
