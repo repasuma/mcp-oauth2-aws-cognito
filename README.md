@@ -81,6 +81,13 @@ The DCR flow works as follows:
 4. Registration creates a Cognito app client and returns credentials
 5. Client uses these credentials for the standard OAuth 2.1 flow
 
+**Implementation Note:** AWS Cognito does not natively support Dynamic Client Registration as specified in OAuth 2.0 DCR (RFC7591). This implementation bridges this gap by using:
+- API Gateway endpoints to provide the DCR API interface
+- Lambda functions to create Cognito app clients programmatically
+- DynamoDB to store the registration data
+
+This approach allows us to maintain compliance with the MCP specification's DCR recommendation while leveraging AWS Cognito for robust authentication and authorization.
+
 **Security Note**: This implementation uses anonymous DCR without additional authentication. For production environments, consider adding:
 - Rate limiting on registration requests
 - Client authentication (mTLS, initial access tokens)

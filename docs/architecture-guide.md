@@ -56,6 +56,18 @@ Provides the backend for Dynamic Client Registration:
 - DynamoDB table for storing registration information
 - Serverless architecture for scalable client registration
 
+### Cognito and Dynamic Client Registration
+
+While the MCP specification recommends supporting Dynamic Client Registration (DCR), AWS Cognito does not natively implement the OAuth 2.0 DCR protocol (RFC7591). To address this limitation, our implementation:
+
+1. Deploys a custom DCR endpoint using API Gateway
+2. Implements the registration logic using Lambda functions
+3. Creates Cognito app clients programmatically via the AWS SDK
+4. Stores registration data in DynamoDB for persistence
+
+This architecture allows our solution to offer the seamless client onboarding benefits of DCR while still leveraging Cognito's robust authentication capabilities. In production environments, you might consider adding security mechanisms to this DCR implementation as outlined in our [DCR Security Recommendations](./docs/dcr-security-recommendations.md).
+
+
 ## Authentication Flow
 
 The complete OAuth 2.1 flow in this implementation works as follows:
