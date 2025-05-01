@@ -1,0 +1,536 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'MCP OAuth 2.1 with Dynamic Client Registration'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: mcp-oauth-demo
+    Description: Project name used for resource naming
+  
+  ClientCallbackUrl:
+    Type: String
+    Default: http://localhost:3000/callback
+    Description: Callback URL for the OAuth client
+  
+  AutoClientCallbackUrl:
+    Type: String
+    Default: http://localhost:3002/callback
+    Description: Callback URL for the auto-discovery client
+
+  LogoutUrl:
+    Type: String
+    Default: http://localhost:3000/logout
+    Description: Logout URL for the OAuth flow
+
+Resources:
+  # Cognito User Pool
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub ${ProjectName}-user-pool
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      MfaConfiguration: 'OFF'
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: false
+          RequireSymbols: true
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+  
+  # User Pool Domain
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub ${ProjectName}-domain-${AWS::AccountId}
+      UserPoolId: !Ref UserPool
+  
+  # Static Client (Pre-configured)
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub ${ProjectName}-static-client
+      GenerateSecret: true
+      RefreshTokenValidity: 30
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - openid
+        - profile
+        - email
+      CallbackURLs:
+        - !Ref ClientCallbackUrl
+      LogoutURLs:
+        - !Ref LogoutUrl
+      SupportedIdentityProviders:
+        - COGNITO
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      ExplicitAuthFlows:
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+  
+  # Resource Server (API)
+  ResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Properties:
+      UserPoolId: !Ref UserPool
+      Identifier: mcp-api
+      Name: MCP API
+      Scopes:
+        - ScopeName: read
+          ScopeDescription: Read access to MCP API
+        - ScopeName: write
+          ScopeDescription: Write access to MCP API
+  
+  # DynamoDB Table for DCR Clients
+  DcrClientsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ${ProjectName}-dcr-clients
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: client_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: client_id
+          KeyType: HASH
+  
+  # IAM Role for Lambda Functions
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: CognitoAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:CreateUserPoolClient
+                  - cognito-idp:DescribeUserPoolClient
+                Resource: !GetAtt UserPool.Arn
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:GetItem
+                Resource: !GetAtt DcrClientsTable.Arn
+  
+  # Lambda Functions
+  RegisterClientFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-register-client
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs20.x
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPool
+          DCR_CLIENTS_TABLE: !Ref DcrClientsTable
+      Code:
+        ZipFile: |
+          const { CognitoIdentityProviderClient, CreateUserPoolClientCommand } = require('@aws-sdk/client-cognito-identity-provider');
+          const { DynamoDBClient, PutItemCommand } = require('@aws-sdk/client-dynamodb');
+          const { marshall } = require('@aws-sdk/util-dynamodb');
+          const crypto = require('crypto');
+
+          // Initialize AWS SDK clients
+          const cognitoClient = new CognitoIdentityProviderClient();
+          const dynamoClient = new DynamoDBClient();
+
+          // Configuration
+          const USER_POOL_ID = process.env.USER_POOL_ID;
+          const DCR_CLIENTS_TABLE = process.env.DCR_CLIENTS_TABLE;
+
+          /**
+           * Lambda function to handle dynamic client registration
+           */
+          exports.handler = async (event) => {
+            try {
+              console.log('Event received:', JSON.stringify(event));
+              
+              // Parse request body
+              const body = JSON.parse(event.body || '{}');
+              
+              // Validate required fields
+              if (!body.redirect_uris || !Array.isArray(body.redirect_uris) || body.redirect_uris.length === 0) {
+                return formatResponse(400, { 
+                  error: 'invalid_client_metadata',
+                  error_description: 'redirect_uris is required and must be an array'
+                });
+              }
+              
+              // Determine client name
+              const clientName = body.client_name || `DCR Client ${Date.now()}`;
+              
+              // Map requested scopes or use defaults
+              const allowedScopes = body.scope ? body.scope.split(' ') : ['openid', 'profile', 'email', 'mcp-api/read'];
+              
+              // Create client in Cognito
+              const createClientParams = {
+                UserPoolId: USER_POOL_ID,
+                ClientName: clientName,
+                GenerateSecret: true,
+                RefreshTokenValidity: 30, // 30 days
+                AllowedOAuthFlows: ['code'],
+                AllowedOAuthFlowsUserPoolClient: true,
+                AllowedOAuthScopes: allowedScopes,
+                CallbackURLs: body.redirect_uris,
+                SupportedIdentityProviders: ['COGNITO'],
+                PreventUserExistenceErrors: 'ENABLED',
+                TokenValidityUnits: {
+                  AccessToken: 'hours',
+                  IdToken: 'hours',
+                  RefreshToken: 'days'
+                },
+                AccessTokenValidity: 1, // 1 hour
+                IdTokenValidity: 1 // 1 hour
+              };
+              
+              // Create the client in Cognito
+              const createClientCommand = new CreateUserPoolClientCommand(createClientParams);
+              const cognitoResponse = await cognitoClient.send(createClientCommand);
+              
+              console.log('Cognito client created:', cognitoResponse.UserPoolClient.ClientId);
+              
+              // Construct client registration response
+              const registrationResponse = {
+                client_id: cognitoResponse.UserPoolClient.ClientId,
+                client_secret: cognitoResponse.UserPoolClient.ClientSecret,
+                client_id_issued_at: Math.floor(Date.now() / 1000),
+                client_secret_expires_at: 0, // Never expires
+                redirect_uris: body.redirect_uris,
+                grant_types: ['authorization_code', 'refresh_token'],
+                token_endpoint_auth_method: 'client_secret_basic',
+                response_types: ['code'],
+                client_name: clientName,
+                scope: allowedScopes.join(' ')
+              };
+              
+              // Store client metadata in DynamoDB
+              const dynamoItem = {
+                client_id: cognitoResponse.UserPoolClient.ClientId,
+                client_metadata: JSON.stringify(registrationResponse),
+                registration_time: Date.now(),
+                initial_request: JSON.stringify(body)
+              };
+              
+              const putItemParams = {
+                TableName: DCR_CLIENTS_TABLE,
+                Item: marshall(dynamoItem)
+              };
+              
+              const putItemCommand = new PutItemCommand(putItemParams);
+              await dynamoClient.send(putItemCommand);
+              
+              console.log('Client registration stored in DynamoDB');
+              
+              // Return successful response
+              return formatResponse(201, registrationResponse);
+            } catch (error) {
+              console.error('Error in client registration:', error);
+              
+              return formatResponse(500, {
+                error: 'server_error',
+                error_description: 'An error occurred during client registration'
+              });
+            }
+          };
+
+          /**
+           * Format the API Gateway response
+           */
+          function formatResponse(statusCode, body) {
+            return {
+              statusCode,
+              headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-store'
+              },
+              body: JSON.stringify(body)
+            };
+          }
+  
+  GetClientFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${ProjectName}-get-client
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs20.x
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          DCR_CLIENTS_TABLE: !Ref DcrClientsTable
+      Code:
+        ZipFile: |
+          const { DynamoDBClient, GetItemCommand } = require('@aws-sdk/client-dynamodb');
+          const { marshall, unmarshall } = require('@aws-sdk/util-dynamodb');
+
+          // Initialize AWS SDK client
+          const dynamoClient = new DynamoDBClient();
+
+          // Configuration
+          const DCR_CLIENTS_TABLE = process.env.DCR_CLIENTS_TABLE;
+
+          /**
+           * Lambda function to get client registration information
+           */
+          exports.handler = async (event) => {
+            try {
+              console.log('Event received:', JSON.stringify(event));
+              
+              // Get client_id from path parameters
+              const clientId = event.pathParameters?.client_id;
+              
+              if (!clientId) {
+                return formatResponse(400, {
+                  error: 'invalid_request',
+                  error_description: 'client_id is required'
+                });
+              }
+              
+              // Get client data from DynamoDB
+              const getItemParams = {
+                TableName: DCR_CLIENTS_TABLE,
+                Key: marshall({ client_id: clientId })
+              };
+              
+              const getItemCommand = new GetItemCommand(getItemParams);
+              const response = await dynamoClient.send(getItemCommand);
+              
+              if (!response.Item) {
+                return formatResponse(404, {
+                  error: 'invalid_client',
+                  error_description: 'Client not found'
+                });
+              }
+              
+              // Extract and return client metadata
+              const item = unmarshall(response.Item);
+              const clientMetadata = JSON.parse(item.client_metadata);
+              
+              // Remove sensitive information
+              delete clientMetadata.client_secret;
+              
+              return formatResponse(200, clientMetadata);
+            } catch (error) {
+              console.error('Error retrieving client information:', error);
+              
+              return formatResponse(500, {
+                error: 'server_error',
+                error_description: 'An error occurred while retrieving client information'
+              });
+            }
+          };
+
+          /**
+           * Format the API Gateway response
+           */
+          function formatResponse(statusCode, body) {
+            return {
+              statusCode,
+              headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-store'
+              },
+              body: JSON.stringify(body)
+            };
+          }
+  
+  # API Gateway
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub ${ProjectName}-dcr-api
+      Description: API for Dynamic Client Registration with MCP OAuth 2.1
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  # Register Resource
+  RegisterResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: register
+
+  # Register Method
+  RegisterMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref RegisterResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RegisterClientFunction.Arn}/invocations
+
+  # Clients Resource
+  ClientsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: clients
+
+  # Client ID Resource
+  ClientIdResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref ClientsResource
+      PathPart: "{client_id}"
+
+  # Get Client Method
+  GetClientMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref ClientIdResource
+      HttpMethod: GET
+      AuthorizationType: NONE
+      RequestParameters:
+        method.request.path.client_id: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetClientFunction.Arn}/invocations
+
+  # API Gateway Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - RegisterMethod
+      - GetClientMethod
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: v1
+
+  # Lambda Permissions
+  RegisterClientPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RegisterClientFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/register
+
+  GetClientPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GetClientFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/GET/clients/{client_id}
+
+  # CORS Configuration for Register Resource
+  RegisterCorsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref RegisterResource
+      HttpMethod: OPTIONS
+      AuthorizationType: NONE
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,POST'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+          ResponseModels:
+            application/json: 'Empty'
+
+Outputs:
+  UserPoolId:
+    Description: "User Pool ID"
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub "${ProjectName}-UserPoolId"
+
+  UserPoolClientId:
+    Description: "Static User Pool Client ID"
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub "${ProjectName}-UserPoolClientId"
+
+  UserPoolDomain:
+    Description: "Cognito Domain"
+    Value: !Sub "${ProjectName}-domain-${AWS::AccountId}.auth.${AWS::Region}.amazoncognito.com"
+    Export:
+      Name: !Sub "${ProjectName}-UserPoolDomain"
+
+  ApiGatewayUrl:
+    Description: "API Gateway URL for Dynamic Client Registration"
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/v1"
+    Export:
+      Name: !Sub "${ProjectName}-ApiGatewayUrl"
+
+  DynamoDBTable:
+    Description: "DynamoDB Table for Client Registrations"
+    Value: !Ref DcrClientsTable
+    Export:
+      Name: !Sub "${ProjectName}-DcrClientsTable"
+
+  RegisterClientEndpoint:
+    Description: "Endpoint for Dynamic Client Registration"
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/v1/register"
+    Export:
+      Name: !Sub "${ProjectName}-RegisterClientEndpoint"

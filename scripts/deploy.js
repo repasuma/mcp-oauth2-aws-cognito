@@ -20,15 +20,15 @@ const TEMPLATE_FILE = path.join(
   "..",
   "infrastructure",
   "cloudformation",
-  "cognito.yml"
+  "mcp-oauth-stack.yml"
 );
 
 // Initialize CloudFormation client
 const cfn = new CloudFormationClient({ region: REGION });
 
-async function deployCognitoStack() {
+async function deployStack() {
   try {
-    console.log("Starting Cognito CloudFormation deployment...");
+    console.log("Starting MCP OAuth + DCR CloudFormation deployment...");
 
     // Read the CloudFormation template
     const templateBody = fs.readFileSync(TEMPLATE_FILE, "utf8");
@@ -54,20 +54,22 @@ async function deployCognitoStack() {
       Capabilities: ["CAPABILITY_IAM"],
       Parameters: [
         {
-          ParameterKey: "UserPoolName",
-          ParameterValue: process.env.USER_POOL_NAME || "MCPDemoUserPool",
+          ParameterKey: "ProjectName",
+          ParameterValue: process.env.PROJECT_NAME || "mcp-oauth-demo",
         },
         {
-          ParameterKey: "AppClientName",
-          ParameterValue: process.env.APP_CLIENT_NAME || "MCPDemoClient",
-        },
-        {
-          ParameterKey: "CallbackURL",
+          ParameterKey: "ClientCallbackUrl",
           ParameterValue:
-            process.env.CALLBACK_URL || "http://localhost:3000/callback",
+            process.env.CLIENT_CALLBACK_URL || "http://localhost:3000/callback",
         },
         {
-          ParameterKey: "LogoutURL",
+          ParameterKey: "AutoClientCallbackUrl",
+          ParameterValue:
+            process.env.AUTO_CLIENT_CALLBACK_URL ||
+            "http://localhost:3002/callback",
+        },
+        {
+          ParameterKey: "LogoutUrl",
           ParameterValue:
             process.env.LOGOUT_URL || "http://localhost:3000/logout",
         },
@@ -146,7 +148,7 @@ async function deployCognitoStack() {
       outputMap[output.OutputKey] = output.OutputValue;
     });
 
-    // Create .env files for client and server
+    // Create .env files for all components
     createEnvFiles(outputMap);
 
     console.log("\nDeployment complete! Environment files have been created.");
@@ -160,8 +162,11 @@ function createEnvFiles(outputs) {
   // Get values from outputs
   const userPoolId = outputs.UserPoolId;
   const clientId = outputs.UserPoolClientId;
-  const clientSecret = outputs.UserPoolClientSecret;
   const userPoolDomain = outputs.UserPoolDomain;
+  const dcrEndpoint = outputs.RegisterClientEndpoint;
+
+  // Base path
+  const basePath = path.dirname(__dirname);
 
   // Create client .env file
   const clientEnv = `# Client Configuration
@@ -175,7 +180,7 @@ MCP_SERVER_URL=http://localhost:3001
 COGNITO_REGION=${REGION}
 COGNITO_USER_POOL_ID=${userPoolId}
 COGNITO_CLIENT_ID=${clientId}
-COGNITO_CLIENT_SECRET=${clientSecret}
+COGNITO_CLIENT_SECRET=
 COGNITO_DOMAIN=${userPoolDomain}
 
 # OAuth Configuration
@@ -183,37 +188,55 @@ OAUTH_REDIRECT_URI=http://localhost:3000/callback
 OAUTH_SCOPE=openid profile email
 `;
 
+  // Create auto-client .env file
+  const autoClientEnv = `# Auto Client Configuration
+AUTO_CLIENT_PORT=3002
+AUTO_CLIENT_URL=http://localhost:3002
+
+# MCP Server URL
+MCP_SERVER_URL=http://localhost:3001
+
+# Dynamic Client Registration Endpoint
+DCR_ENDPOINT=${dcrEndpoint}
+`;
+
   // Create server .env file
   const serverEnv = `# Server Configuration
 PORT=3001
+BASE_URL=http://localhost:3001
 
 # Cognito Configuration
 COGNITO_REGION=${REGION}
 COGNITO_USER_POOL_ID=${userPoolId}
 COGNITO_CLIENT_ID=${clientId}
-COGNITO_CLIENT_SECRET=${clientSecret}
+COGNITO_CLIENT_SECRET=
 COGNITO_DOMAIN=${userPoolDomain}
+
+# Dynamic Client Registration Endpoint
+DCR_ENDPOINT=${dcrEndpoint}
 `;
 
-  const basePath = path.dirname(__dirname);
-
   // Ensure directories exist
-  if (!fs.existsSync(path.join(basePath, "src", "client"))) {
-    fs.mkdirSync(path.join(basePath, "src", "client"), { recursive: true });
-  }
-
-  if (!fs.existsSync(path.join(basePath, "src", "mcp-server"))) {
-    fs.mkdirSync(path.join(basePath, "src", "mcp-server"), {
-      recursive: true,
-    });
-  }
+  ensureDirectoryExists(path.join(basePath, "src", "client"));
+  ensureDirectoryExists(path.join(basePath, "src", "auto-client"));
+  ensureDirectoryExists(path.join(basePath, "src", "mcp-server"));
 
   // Write the .env files
   fs.writeFileSync(path.join(basePath, "src", "client", ".env"), clientEnv);
+  fs.writeFileSync(
+    path.join(basePath, "src", "auto-client", ".env"),
+    autoClientEnv
+  );
   fs.writeFileSync(path.join(basePath, "src", "mcp-server", ".env"), serverEnv);
 
-  console.log("Created .env files for client and server");
+  console.log("Created .env files for client, auto-client, and server");
+}
+
+function ensureDirectoryExists(directory) {
+  if (!fs.existsSync(directory)) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
 }
 
 // Run the deployment
-deployCognitoStack().catch(console.error);
+deployStack().catch(console.error);
