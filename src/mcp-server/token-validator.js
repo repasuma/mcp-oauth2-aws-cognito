@@ -38,9 +38,10 @@ async function validateToken(token) {
       throw new Error('Invalid token format');
     }
     
-    console.log('Decoded Token Payload:', decodedToken.payload);
-    console.log('Configured Issuer:', config.cognito.issuer);
-    console.log('Configured Client ID:', config.cognito.clientId);
+    //TODO: debug log for dev testing purposes only
+    //console.log('Decoded Token Payload:', decodedToken.payload);
+    //console.log('Configured Issuer:', config.cognito.issuer);
+    //console.log('Configured Client ID:', config.cognito.clientId);
 
     const { kid } = decodedToken.header;
     

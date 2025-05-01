@@ -5,13 +5,15 @@
     "main": "index.js",
     "scripts": {
         "install:client": "cd src/client && npm install",
+        "install:auto-client": "cd src/auto-client && npm install",
         "install:server": "cd src/mcp-server && npm install",
-        "install:all": "npm install && npm run install:client && npm run install:server",
-        "deploy:cognito": "node scripts/deploy-cognito.js",
+        "install:all": "npm install && npm run install:client && npm run install:auto-client && npm run install:server",
+        "deploy": "node scripts/deploy.js",
         "cleanup": "node scripts/cleanup.js",
         "start:server": "cd src/mcp-server && node index.js",
         "start:client": "cd src/client && node index.js",
-        "dev": "concurrently \"npm run start:server\" \"npm run start:client\""
+        "start:auto-client": "cd src/auto-client && node index.js",
+        "dev": "concurrently \"npm run start:server\" \"npm run start:client\" \"npm run start:auto-client\""
     },
     "repository": {
         "type": "git",
@@ -21,7 +23,8 @@
         "mcp",
         "oauth",
         "aws",
-        "cognito"
+        "cognito",
+        "dynamic-client-registration"
     ],
     "author": "Empires Security Labs",
     "license": "MIT",

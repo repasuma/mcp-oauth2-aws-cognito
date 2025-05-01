@@ -26,6 +26,17 @@ app.get('/.well-known/oauth-protected-resource', (req, res) => {
   res.json(metadata);
 });
 
+app.get('/.well-known/oauth-dynamic-client-registration', (req, res) => {
+  res.json({
+    registration_endpoint: process.env.DCR_ENDPOINT || 'https://api-gateway-url/v1/register',
+    registration_endpoint_auth_methods_supported: ['none'],
+    response_types_supported: ['code'],
+    grant_types_supported: ['authorization_code', 'refresh_token'],
+    token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post'],
+    service_documentation: `${config.baseUrl}/docs/dcr`
+  });
+});
+
 // Middleware to validate access tokens
 const requireAuth = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -85,4 +96,5 @@ app.post('/v1/contexts', requireAuth, (req, res) => {
 app.listen(PORT, () => {
   console.log(`MCP Server running on port ${PORT}`);
   console.log(`Protected Resource Metadata available at: http://localhost:${PORT}/.well-known/oauth-protected-resource`);
+  console.log(`DCR Metadata available at: http://localhost:${PORT}/.well-known/oauth-dynamic-client-registration`);
 });
