@@ -17,6 +17,12 @@ module.exports = {
   // Base URL for the client
   baseUrl: process.env.CLIENT_URL || 'http://localhost:3000',
   
+  // Auto Client Base URL
+  autoClientBaseUrl: process.env.AUTO_CLIENT_URL || 'http://localhost:3002',
+  
+  // Dynamic Client Registration endpoint
+  dcrEndpoint: process.env.DCR_ENDPOINT || 'https://api-gateway-url/v1/register',
+
   // AWS Cognito Configuration
   cognito: {
     region: process.env.COGNITO_REGION || 'us-east-1',
@@ -29,7 +35,7 @@ module.exports = {
       : '',
     
     // Full domain URL
-    domainUrl: process.env.COGNITO_DOMAIN || '',
+    domainUrl: `https://${process.env.COGNITO_DOMAIN}`,
     
     // Construct the issuer URL
     issuer: process.env.COGNITO_ISSUER || 
