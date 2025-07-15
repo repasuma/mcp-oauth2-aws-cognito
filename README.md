@@ -115,7 +115,7 @@ See our [DCR Security Recommendations](./docs/dcr-security-recommendations.md) t
     - CloudFormation for deploy (1 stack)
 - Basic knowledge of OAuth 2.1 flows
 
-### Setup for AWS Incognito
+### Setup for AWS Cognito
 1. Clone the repository
    ```bash
    git clone https://github.com/empires-security/mcp-oauth2-aws-cognito.git
