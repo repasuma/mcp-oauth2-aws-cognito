@@ -115,7 +115,7 @@ See our [DCR Security Recommendations](./docs/dcr-security-recommendations.md) t
     - CloudFormation for deploy (1 stack)
 - Basic knowledge of OAuth 2.1 flows
 
-### Setup
+### Setup for AWS Incognito
 1. Clone the repository
    ```bash
    git clone https://github.com/empires-security/mcp-oauth2-aws-cognito.git
@@ -138,6 +138,32 @@ See our [DCR Security Recommendations](./docs/dcr-security-recommendations.md) t
    - `src/mcp-server/.env`
    - Compare with `.env.example` files
    - Manually verify/update CLIENT_SECRET if needed
+
+
+### Setup for External Authz Server
+1. Clone the repository
+   ```bash
+   git clone https://github.com/empires-security/mcp-oauth2-aws-cognito.git
+   cd mcp-oauth2-aws-cognito
+   ```
+
+2. Install dependencies for clients and server
+   ```bash
+   npm run install:all
+   ```
+
+3. Deploy AWS resources
+   ```bash
+   npm run create:env
+   ```
+
+4. Review generated `.env` files in:
+   - `src/client/.env`
+   - `src/auto-client/.env`
+   - `src/mcp-server/.env`
+   - Compare with `.env.example` files
+   - Manually update CLIENT_ID, CLIENT_SECRET and AUTH_SERVER_URL
+
 
 ### Running the Application
 1. Start both clients and server

@@ -34,19 +34,22 @@ app.get('/.well-known/oauth-authorization-server', async (req, res) => {
     
     // Cognito uses OpenID Connect configuration, not OAuth authorization server endpoint
     // Convert the configured auth server URL to the correct OpenID configuration endpoint
-    let cognitoMetadataUrl = config.cognito.authServerUrl;
-    
+    authMetadataUrl = config.cognito.authServerUrl;
+    if (config.mcpServer.user_external_auth == 'external_auth') {
+      authMetadataUrl = config.oauth.authServerUrl;
+    }
+    console.log(`Original Auth Metadata URL: ${authMetadataUrl}`);
     // If the configured URL points to oauth-authorization-server, change it to openid-configuration
-    if (cognitoMetadataUrl.includes('/.well-known/oauth-authorization-server')) {
-      cognitoMetadataUrl = cognitoMetadataUrl.replace('/.well-known/oauth-authorization-server', '/.well-known/openid-configuration');
+    if (authMetadataUrl.includes('/.well-known/oauth-authorization-server')) {
+      authMetadataUrl = authMetadataUrl.replace('/.well-known/oauth-authorization-server', '/.well-known/openid-configuration');
     }
     // If it doesn't have any well-known endpoint, add the OpenID configuration one
-    else if (!cognitoMetadataUrl.includes('/.well-known/')) {
-      cognitoMetadataUrl = `${cognitoMetadataUrl}/.well-known/openid-configuration`;
+    else if (!authMetadataUrl.includes('/.well-known/')) {
+      authMetadataUrl = `${authMetadataUrl}/.well-known/openid-configuration`;
     }
     
-    console.log(`Proxying authorization server metadata request to: ${cognitoMetadataUrl}`);
-    const response = await axios.get(cognitoMetadataUrl);
+    console.log(`Proxying authorization server metadata request to: ${authMetadataUrl}`);
+    const response = await axios.get(authMetadataUrl);
     
     // Add registration_endpoint to the metadata for RFC 8414 compliance
     const metadata = response.data;

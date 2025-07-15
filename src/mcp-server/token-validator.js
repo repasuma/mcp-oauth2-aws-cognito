@@ -18,8 +18,11 @@ async function getAuthServerMetadata() {
     return authServerMetadataCache;
   }
   
-  // Fetch authorization server metadata from Cognito
-  const authServerUrl = config.cognito.authServerUrl;
+  // Fetch authorization server metadata from External Auth Server
+  authServerUrl = config.cognito.authServerUrl;
+  if (config.mcpServer.user_external_auth == 'external_auth') {
+    authServerUrl = config.oauth.authServerUrl;
+  }
   
   try {
     const response = await axios.get(authServerUrl);
