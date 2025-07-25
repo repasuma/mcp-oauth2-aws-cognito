@@ -12,6 +12,7 @@ module.exports = {
   // MCP Server Configuration
   mcpServer: {
     baseUrl: process.env.MCP_SERVER_URL || 'http://localhost:3001',
+    user_external_auth: process.env.MCP_SERVER_USER_EXTERNAL_AUTH || 'external_auth',
   },
   
   // Base URL for the client
@@ -66,6 +67,7 @@ module.exports = {
     clientId: process.env.OAUTH_CLIENT_ID || process.env.COGNITO_CLIENT_ID,
     clientSecret: process.env.OAUTH_CLIENT_SECRET || process.env.COGNITO_CLIENT_SECRET,
     redirectUri: process.env.OAUTH_REDIRECT_URI || 'http://localhost:3000/callback',
-    scope: process.env.OAUTH_SCOPE || 'openid profile email'
+    scope: process.env.OAUTH_SCOPE || 'openid profile email',
+    authServerUrl: process.env.AUTH_SERVER_URL,
   }
 };

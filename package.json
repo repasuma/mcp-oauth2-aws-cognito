@@ -9,6 +9,7 @@
         "install:server": "cd src/mcp-server && npm install",
         "install:all": "npm install && npm run install:client && npm run install:auto-client && npm run install:server",
         "deploy": "node scripts/deploy.js",
+        "create:env": "node scripts/create_env.js",
         "cleanup": "node scripts/cleanup.js",
         "start:server": "cd src/mcp-server && node index.js",
         "start:client": "cd src/client && node index.js",
